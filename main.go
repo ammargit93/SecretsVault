@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,9 +11,15 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type User struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+type Service struct {
+	ServiceName   string
+	ServiceAPIKey string
+	ServiceRole   string
+}
+
+type ServiceRequest struct {
+	ServiceName string `json:"service_name"`
+	ServiceRole string `json:"service_role"`
 }
 
 func InitDB() *pgxpool.Pool {
@@ -25,28 +33,27 @@ func InitDB() *pgxpool.Pool {
 	return conn
 }
 
-func InsertUser(db *pgxpool.Pool, username string, password string) error {
-	_, err := db.Exec(
-		context.Background(),
+func InsertService(db *pgxpool.Pool, service Service) error {
+	_, err := db.Exec(context.Background(),
 		`
-		INSERT INTO users(username, password)
-		VALUES($1, $2)
+		INSERT INTO services(service_name, service_api_key, service_role)
+		VALUES($1, $2, $3)
 		`,
-		username,
-		password,
+		service.ServiceName, service.ServiceAPIKey, service.ServiceRole,
 	)
 	return err
 }
-func fetchUser(db *pgxpool.Pool, username string) (User, error) {
-	var user User
+
+func fetchService(db *pgxpool.Pool, serviceName, serviceRole string) (string, error) {
+	var serviceAPIKey string
 	err := db.QueryRow(
 		context.Background(),
 		`
-		select username,password from users where username=$1
+		select service_api_key from services where service_name=$1 and service_role=$2
 		`,
-		username,
-	).Scan(&user.Username, &user.Password)
-	return user, err
+		serviceName, serviceRole,
+	).Scan(&serviceAPIKey)
+	return serviceAPIKey, err
 }
 
 func hashPassword(password string) (string, error) {
@@ -57,6 +64,14 @@ func hashPassword(password string) (string, error) {
 func checkPasswordHash(password, hash string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
 	return err == nil
+}
+
+func generateAPIKey() string {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		log.Fatal(err)
+	}
+	return "sv_" + hex.EncodeToString(bytes)
 }
 
 func InvalidJSON(c *fiber.Ctx) error {
@@ -71,46 +86,50 @@ func main() {
 	db := InitDB()
 	defer db.Close()
 
-	app.Get("/hi", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"message": "hello from fiber",
-		})
-	})
+	app.Post("/register", func(c *fiber.Ctx) error {
+		var serviceRequest ServiceRequest
 
-	app.Post("/auth/register", func(c *fiber.Ctx) error {
-		var user User
-		if err := c.BodyParser(&user); err != nil {
-			return InvalidJSON(c)
-		}
-		passwordHash, err := hashPassword(user.Password)
+		c.BodyParser(&serviceRequest)
+		serviceAPIKey := generateAPIKey()
+		hashedAPIKey, err := hashPassword(serviceAPIKey)
 
-		err = InsertUser(db, user.Username, passwordHash)
+		var service Service
+		service.ServiceAPIKey = hashedAPIKey
+		service.ServiceName = serviceRequest.ServiceName
+		service.ServiceRole = serviceRequest.ServiceRole
+
+		err = InsertService(db, service)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error": "DB write fail",
 			})
 		}
 		return c.Status(201).JSON(fiber.Map{
-			"message": "user created",
+			"API_KEY": serviceAPIKey,
 		})
 	})
 
-	app.Post("/auth/login", func(c *fiber.Ctx) error {
-		var user User
-		if err := c.BodyParser(&user); err != nil {
-			return InvalidJSON(c)
-		}
-		fetchedUser, err := fetchUser(db, user.Username)
+	app.Post("/login", func(c *fiber.Ctx) error {
+		var serviceRequest ServiceRequest
+
+		c.BodyParser(&serviceRequest)
+		serviceAPIKey := c.Get("SV_API_KEY")
+		fetchedAPIKey, err := fetchService(db, serviceRequest.ServiceName, serviceRequest.ServiceRole)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
-				"error": "Failed to fetch user",
+				"error": "API_KEY mismatch",
 			})
 		}
-		if checkPasswordHash(user.Password, fetchedUser.Password) {
-			return c.Status(200).JSON(fiber.Map{"message": "Successfully authenticated"})
-		} else {
-			return c.Status(200).JSON(fiber.Map{"message": "Wrong password or username"})
+		if checkPasswordHash(serviceAPIKey, fetchedAPIKey) {
+			return c.Status(201).JSON(fiber.Map{
+				"message": "Sucessfully Authenticated",
+			})
 		}
+
+		return c.Status(500).JSON(fiber.Map{
+			"error": "DB write fail",
+		})
+
 	})
 
 	log.Fatal(app.Listen(":8080"))
