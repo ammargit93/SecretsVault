@@ -7,13 +7,16 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log"
 )
 
-var MasterKey = "supersecretmasterkey"
+
+var MasterKey = "thisis32bytekeythisis32bytekey!!"
 
 func EncryptAES(plaintext, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
+		log.Fatalln("18", err)
 		return nil, err
 	}
 
@@ -24,12 +27,12 @@ func EncryptAES(plaintext, key []byte) ([]byte, error) {
 	ciphertext := make([]byte, aes.BlockSize+len(padtext))
 	iv := ciphertext[:aes.BlockSize]
 	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		log.Fatalln("28", err)
 		return nil, err
 	}
 
 	mode := cipher.NewCBCEncrypter(block, iv)
 	mode.CryptBlocks(ciphertext[aes.BlockSize:], padtext)
-
 	return ciphertext, nil
 }
 

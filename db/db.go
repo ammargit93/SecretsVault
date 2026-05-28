@@ -53,13 +53,47 @@ func InsertKEK(db *pgxpool.Pool, kek models.KeyEncryptionKey) error {
 	return err
 }
 
+func FetchKEK(db *pgxpool.Pool, kek models.KeyEncryptionKey) (int, error) {
+	var kekId int
+	err := db.QueryRow(
+		context.Background(),
+		`
+		select kek_id from kek where encrypted_kek=$1 and nonce=$2
+		`,
+		kek.KeyEncryptionKey, kek.Nonce,
+	).Scan(&kekId)
+	return kekId, err
+}
 func InsertDEK(db *pgxpool.Pool, dek models.DataEncryptionKey) error {
 	_, err := db.Exec(context.Background(),
 		`
-		INSERT INTO dek(encrypted_dek, nonce)
-		VALUES($1, $2)
+		INSERT INTO dek(encrypted_dek, nonce, fk_kek_id)
+		VALUES($1, $2, $3)
+		`,
+		dek.DataEncryptionKey, dek.Nonce, dek.KekIdFK,
+	)
+	return err
+}
+
+func FetchDEK(db *pgxpool.Pool, dek models.DataEncryptionKey) (int, error) {
+	var dekId int
+	err := db.QueryRow(
+		context.Background(),
+		`
+		select dek_id from dek where encrypted_dek=$1 and nonce=$2
 		`,
 		dek.DataEncryptionKey, dek.Nonce,
+	).Scan(&dekId)
+	return dekId, err
+}
+
+func InsertSecret(db *pgxpool.Pool, secret models.Secret) error {
+	_, err := db.Exec(context.Background(),
+		`
+		INSERT INTO secrets(fk_dek_id, encrypted_secret_key, encrypted_secret_value, nonce)
+		VALUES($1, $2, $3, $4)
+		`,
+		secret.DekIdFK, secret.SecretKey, secret.SecretValue, secret.Nonce,
 	)
 	return err
 }
