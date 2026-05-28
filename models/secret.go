@@ -1,7 +1,7 @@
 package models
 
 type Secret struct {
-	SecretKey   []byte `json:"secret_key"`
+	SecretKey   string `json:"secret_key"`
 	SecretValue []byte `json:"secret_value"`
 	Nonce       []byte `json:"nonce"`
 	DekIdFK     int    `json:"fk_dek_id"`

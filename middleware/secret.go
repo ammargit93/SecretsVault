@@ -71,13 +71,6 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse request body"})
 			}
 
-			// 6. Encrypt the SecretKey string
-			encryptedSecretKey, err := state.EncryptAES([]byte(secretRequest.SecretKey), rawDEK)
-			if err != nil {
-				log.Println("Secret key encryption failed:", err)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
-			}
-
 			// 7. Marshal SecretValue (any) to JSON bytes so it can be encrypted
 			valueBytes, err := json.Marshal(secretRequest.SecretValue)
 			if err != nil {
@@ -91,7 +84,7 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 			}
 
 			secretData := models.Secret{
-				SecretKey:   encryptedSecretKey,
+				SecretKey:   secretRequest.SecretKey,
 				SecretValue: encryptedSecretValue,
 				Nonce:       []byte(rand.Text()),
 				DekIdFK:     dekId,
@@ -101,5 +94,26 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 			return c.JSON(fiber.Map{"message": "Write successful"})
 
 		}
+	}
+}
+
+func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		bearer := c.Get("Authorization")
+		parts := strings.Split(bearer, " ")
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization header"})
+		}
+
+		claims, err := utils.ValidateJWT(parts[1])
+		if err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
+		}
+		if claims.ServiceRole == "WR" {
+			return c.JSON(fiber.Map{"Error": "Permission denied"})
+		} else {
+
+		}
+		return c.JSON(fiber.Map{"message": "RD successful"})
 	}
 }
