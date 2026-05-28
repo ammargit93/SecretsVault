@@ -8,8 +8,8 @@ type Secret struct {
 }
 
 type SecretRequest struct {
-	SecretKey   string
-	SecretValue any
+	SecretKey   string `json:"secret_key"`
+	SecretValue any    `json:"secret_value"`
 }
 
 type KeyEncryptionKey struct {
@@ -21,4 +21,10 @@ type DataEncryptionKey struct {
 	DataEncryptionKey []byte `json:"dek"`
 	Nonce             []byte `json:"nonce"`
 	KekIdFK           int    `json:"fk_kek_id"`
+}
+
+type DecryptionPayload struct {
+	EncryptedSecretValue []byte
+	EncryptedDEK         []byte
+	EncryptedKEK         []byte
 }

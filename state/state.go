@@ -1,58 +1,72 @@
 package state
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"fmt"
 	"io"
-	"log"
 )
 
+var MasterKey = []byte("thisis32bytekeythisis32bytekey!!")
 
-var MasterKey = "thisis32bytekeythisis32bytekey!!"
+// EncryptAES encrypts plaintext using AES-256-GCM
+func EncryptAES(plaintext []byte, key []byte) ([]byte, error) {
+	if len(key) != 32 {
+		return nil, fmt.Errorf("key must be exactly 32 bytes for AES-256")
+	}
 
-func EncryptAES(plaintext, key []byte) ([]byte, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		log.Fatalln("18", err)
 		return nil, err
 	}
 
-	// Pad plaintext to block size
-	padding := aes.BlockSize - len(plaintext)%aes.BlockSize
-	padtext := append(plaintext, bytes.Repeat([]byte{byte(padding)}, padding)...)
-
-	ciphertext := make([]byte, aes.BlockSize+len(padtext))
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		log.Fatalln("28", err)
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
 		return nil, err
 	}
 
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(ciphertext[aes.BlockSize:], padtext)
+	nonce := make([]byte, gcm.NonceSize())
+
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	// nonce is prepended to ciphertext
+	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
+
 	return ciphertext, nil
 }
 
-func DecryptAES(ciphertext, key []byte) ([]byte, error) {
+// DecryptAES decrypts AES-256-GCM encrypted data
+func DecryptAES(ciphertext []byte, key []byte) ([]byte, error) {
+	if len(key) != 32 {
+		return nil, fmt.Errorf("key must be exactly 32 bytes for AES-256")
+	}
+
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(ciphertext) < aes.BlockSize {
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonceSize := gcm.NonceSize()
+
+	if len(ciphertext) < nonceSize {
 		return nil, fmt.Errorf("ciphertext too short")
 	}
 
-	iv := ciphertext[:aes.BlockSize]
-	ciphertext = ciphertext[aes.BlockSize:]
+	nonce := ciphertext[:nonceSize]
+	actualCiphertext := ciphertext[nonceSize:]
 
-	mode := cipher.NewCBCDecrypter(block, iv)
-	mode.CryptBlocks(ciphertext, ciphertext)
+	plaintext, err := gcm.Open(nil, nonce, actualCiphertext, nil)
+	if err != nil {
+		return nil, fmt.Errorf("decryption failed: %w", err)
+	}
 
-	// Unpad
-	padding := int(ciphertext[len(ciphertext)-1])
-	return ciphertext[:len(ciphertext)-padding], nil
+	return plaintext, nil
 }

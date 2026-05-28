@@ -20,5 +20,7 @@ func main() {
 
 	app.Post("/secret/write", middleware.WriteSecret(conn))
 
+	app.Post("/secret/read", middleware.ReadSecret(conn))
+
 	log.Fatal(app.Listen(":8080"))
 }

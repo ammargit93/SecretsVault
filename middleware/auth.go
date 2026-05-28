@@ -43,7 +43,7 @@ func Login(conn *pgxpool.Pool) fiber.Handler {
 		fetchedAPIKey, err := db.FetchService(conn, serviceRequest.ServiceName, serviceRequest.ServiceRole)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
-				"error": "API_KEY mismatch",
+				"error": err,
 			})
 		}
 		if utils.CheckPasswordHash(serviceAPIKey, fetchedAPIKey) {

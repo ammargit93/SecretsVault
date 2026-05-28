@@ -30,48 +30,63 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 		if claims.ServiceRole == "RD" {
 			return c.JSON(fiber.Map{"Error": "Permission denied"})
 		} else {
+			// 1. Generate and encrypt KEK
 			rawKEK := make([]byte, 32)
 			if _, err := cryptoRand.Read(rawKEK); err != nil {
-				log.Fatalln("Failed to generate raw KEK")
+				log.Println("Failed to generate raw KEK:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
 			encryptedKEK, err := state.EncryptAES(rawKEK, []byte(state.MasterKey))
 			if err != nil {
-				log.Fatalln("KEK encryption failed")
+				log.Println("KEK encryption failed:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
 			kek := models.KeyEncryptionKey{
 				KeyEncryptionKey: encryptedKEK,
 				Nonce:            []byte(rand.Text()),
 			}
-			db.InsertKEK(conn, kek)
 
+			// Capture the ID directly from the insert!
+			kekId, err := db.InsertKEK(conn, kek)
+			if err != nil {
+				log.Println("Failed to insert KEK into DB:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "database error"})
+			}
+
+			// 2. Generate and encrypt DEK
 			rawDEK := make([]byte, 32)
 			if _, err := cryptoRand.Read(rawDEK); err != nil {
-				log.Fatalln("Failed to generate raw DEK")
+				log.Println("Failed to generate raw DEK:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
-			// 4. Encrypt the raw DEK using the RAW KEK (not the encrypted 48-byte one!)
 			encryptedDEK, err := state.EncryptAES(rawDEK, rawKEK)
 			if err != nil {
-				log.Fatalln("DEK encryption failed")
+				log.Println("DEK encryption failed:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
-			kekId, err := db.FetchKEK(conn, kek)
 
 			dek := models.DataEncryptionKey{
-				DataEncryptionKey: encryptedDEK, // Saved as 48 bytes in DB
+				DataEncryptionKey: encryptedDEK,
 				Nonce:             []byte(rand.Text()),
-				KekIdFK:           kekId,
+				KekIdFK:           kekId, // Uses guaranteed KEK ID
 			}
-			db.InsertDEK(conn, dek)
 
-			dekId, err := db.FetchDEK(conn, dek)
+			// Capture the ID directly from the insert!
+			dekId, err := db.InsertDEK(conn, dek)
+			if err != nil {
+				log.Println("Failed to insert DEK into DB:", err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "database error"})
+			}
+
+			// 3. Parse and process Secret payload
 			var secretRequest models.SecretRequest
 			if err := c.BodyParser(&secretRequest); err != nil {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "cannot parse request body"})
 			}
 
-			// 7. Marshal SecretValue (any) to JSON bytes so it can be encrypted
 			valueBytes, err := json.Marshal(secretRequest.SecretValue)
 			if err != nil {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid secret value format"})
@@ -80,19 +95,22 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 			encryptedSecretValue, err := state.EncryptAES(valueBytes, rawDEK)
 			if err != nil {
 				log.Println("Secret value encryption failed:", err)
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
 			secretData := models.Secret{
 				SecretKey:   secretRequest.SecretKey,
 				SecretValue: encryptedSecretValue,
 				Nonce:       []byte(rand.Text()),
-				DekIdFK:     dekId,
+				DekIdFK:     dekId, // Uses guaranteed DEK ID
 			}
 
-			db.InsertSecret(conn, secretData)
-			return c.JSON(fiber.Map{"message": "Write successful"})
+			if err := db.InsertSecret(conn, secretData); err != nil {
+				log.Println("Failed to insert secret:", secretData.SecretKey, err)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save secret"})
+			}
 
+			return c.JSON(fiber.Map{"message": secretRequest.SecretKey})
 		}
 	}
 }
@@ -112,8 +130,41 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 		if claims.ServiceRole == "WR" {
 			return c.JSON(fiber.Map{"Error": "Permission denied"})
 		} else {
+			rawBody := c.Body()
+			var bodyMap map[string]string
+			json.Unmarshal(rawBody, &bodyMap)
 
+			secretKey, exists := bodyMap["secret_key"]
+			if !exists {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing secret_key"})
+			}
+
+			descPayload, err := db.FetchSecretDecryptionPayload(conn, secretKey)
+			if err != nil {
+				log.Println("Failed to fetch payload:", err)
+				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "secret not found"})
+			}
+
+			// 1. FIX: Decrypt the KEK using the MasterKey
+			decryptedKEK, err := state.DecryptAES(descPayload.EncryptedKEK, state.MasterKey)
+			if err != nil {
+				log.Fatalln("Failed to decrypt KEK:", err)
+			}
+
+			// 2. Decrypt the DEK using the valid decrypted KEK
+			decryptedDEK, err := state.DecryptAES(descPayload.EncryptedDEK, decryptedKEK)
+			if err != nil {
+				log.Fatalln("Failed to decrypt DEK:", err)
+			}
+
+			// 3. Decrypt the secret value using the valid decrypted DEK
+			decryptedSecretValue, err := state.DecryptAES(descPayload.EncryptedSecretValue, decryptedDEK)
+			if err != nil {
+				log.Fatalln("Failed to decrypt Secret Value:", err)
+			}
+
+			// 4. FIX: Cast byte slice explicitly to a string so it returns clean text, not base64
+			return c.JSON(fiber.Map{"secret_value": string(decryptedSecretValue)})
 		}
-		return c.JSON(fiber.Map{"message": "RD successful"})
 	}
 }
