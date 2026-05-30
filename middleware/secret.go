@@ -138,33 +138,33 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if !exists {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing secret_key"})
 			}
-
+			sk, exists := Cache[secretKey]
+			if exists {
+				return c.JSON(fiber.Map{"secret_value": json.RawMessage(sk)})
+			}
 			descPayload, err := db.FetchSecretDecryptionPayload(conn, secretKey)
 			if err != nil {
 				log.Println("Failed to fetch payload:", err)
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "secret not found"})
 			}
 
-			// 1. FIX: Decrypt the KEK using the MasterKey
 			decryptedKEK, err := state.DecryptAES(descPayload.EncryptedKEK, state.MasterKey)
 			if err != nil {
 				log.Fatalln("Failed to decrypt KEK:", err)
 			}
 
-			// 2. Decrypt the DEK using the valid decrypted KEK
 			decryptedDEK, err := state.DecryptAES(descPayload.EncryptedDEK, decryptedKEK)
 			if err != nil {
 				log.Fatalln("Failed to decrypt DEK:", err)
 			}
 
-			// 3. Decrypt the secret value using the valid decrypted DEK
 			decryptedSecretValue, err := state.DecryptAES(descPayload.EncryptedSecretValue, decryptedDEK)
 			if err != nil {
 				log.Fatalln("Failed to decrypt Secret Value:", err)
 			}
+			Cache[secretKey] = decryptedSecretValue
 
-			// 4. FIX: Cast byte slice explicitly to a string so it returns clean text, not base64
-			return c.JSON(fiber.Map{"secret_value": string(decryptedSecretValue)})
+			return c.JSON(fiber.Map{"secret_value": json.RawMessage(decryptedSecretValue)})
 		}
 	}
 }

@@ -94,43 +94,6 @@ func InsertSecret(db *pgxpool.Pool, secret models.Secret) error {
 	)
 	return err
 }
-func FetchSecretByKey(db *pgxpool.Pool, secretKey string) (models.Secret, error) {
-	var secret models.Secret
-	err := db.QueryRow(
-		context.Background(),
-		`
-        SELECT fk_dek_id, secret_key, encrypted_secret_value, nonce 
-        FROM secrets 
-        WHERE secret_key = $1
-        `,
-		secretKey, // Single quotes removed from $1
-	).Scan(&secret.DekIdFK, &secret.SecretKey, &secret.SecretValue, &secret.Nonce) // Added missing reference ampersands (&)
-	return secret, err
-}
-
-func FetchDEKbyId(db *pgxpool.Pool, DekId int) (models.DataEncryptionKey, error) {
-	var dek models.DataEncryptionKey
-	err := db.QueryRow(
-		context.Background(),
-		`
-		select encrypted_dek, nonce from dek where dek_id = $1
-		`,
-		DekId,
-	).Scan(&dek.DataEncryptionKey, &dek.Nonce)
-	return dek, err
-}
-
-func FetchKEKbyId(db *pgxpool.Pool, KekId int) (models.KeyEncryptionKey, error) {
-	var kek models.KeyEncryptionKey
-	err := db.QueryRow(
-		context.Background(),
-		`
-		select encrypted_kek, nonce from kek where kek_id = $1
-		`,
-		KekId,
-	).Scan(&kek.KeyEncryptionKey, &kek.Nonce)
-	return kek, err
-}
 
 func FetchSecretDecryptionPayload(db *pgxpool.Pool, secretKey string) (models.DecryptionPayload, error) {
 	var payload models.DecryptionPayload
