@@ -62,7 +62,7 @@ func Login(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		return c.Status(500).JSON(fiber.Map{
-			"error": "DB write fail",
+			"error": "Fail to login",
 		})
 	}
 }

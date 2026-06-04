@@ -1,16 +1,63 @@
 package state
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log"
+	"os"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/kms"
 )
 
-var MasterKey = []byte("thisis32bytekeythisis32bytekey!!")
+func EncryptKMS(plaintext []byte) ([]byte, error) {
+	ctx := context.Background()
 
-// EncryptAES encrypts plaintext using AES-256-GCM
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-south-1"))
+	if err != nil {
+		panic(err)
+	}
+
+	client := kms.NewFromConfig(cfg)
+	keyID := os.Getenv("KMS_KEY_ID")
+	result, err := client.Encrypt(ctx, &kms.EncryptInput{
+		KeyId:     &keyID,
+		Plaintext: plaintext,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return result.CiphertextBlob, nil
+}
+
+func DecryptKMS(ciphertext []byte) ([]byte, error) {
+	ctx := context.Background()
+
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-south-1"))
+	if err != nil {
+		log.Println("Error config", err)
+		panic(err)
+	}
+
+	client := kms.NewFromConfig(cfg)
+	keyID := os.Getenv("KMS_KEY_ID")
+	result, err := client.Decrypt(ctx, &kms.DecryptInput{
+		KeyId:          &keyID,
+		CiphertextBlob: ciphertext,
+	})
+	if err != nil {
+		log.Println("")
+		return nil, err
+	}
+
+	return result.Plaintext, nil
+}
+
 func EncryptAES(plaintext []byte, key []byte) ([]byte, error) {
 	if len(key) != 32 {
 		return nil, fmt.Errorf("key must be exactly 32 bytes for AES-256")

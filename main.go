@@ -6,6 +6,7 @@ import (
 	"secretsvault/middleware"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -13,6 +14,10 @@ func main() {
 
 	conn := db.InitDB()
 	defer conn.Close()
+	err := godotenv.Load()
+	if err != nil {
+		log.Fatal("Error loading .env file")
+	}
 
 	app.Post("/register", middleware.Register(conn))
 

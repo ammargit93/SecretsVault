@@ -37,7 +37,7 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
-			encryptedKEK, err := state.EncryptAES(rawKEK, []byte(state.MasterKey))
+			encryptedKEK, err := state.EncryptKMS(rawKEK)
 			if err != nil {
 				log.Println("KEK encryption failed:", err)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
@@ -148,7 +148,7 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "secret not found"})
 			}
 
-			decryptedKEK, err := state.DecryptAES(descPayload.EncryptedKEK, state.MasterKey)
+			decryptedKEK, err := state.DecryptKMS(descPayload.EncryptedKEK)
 			if err != nil {
 				log.Fatalln("Failed to decrypt KEK:", err)
 			}
