@@ -5,6 +5,7 @@ type Secret struct {
 	SecretValue []byte `json:"secret_value"`
 	Nonce       []byte `json:"nonce"`
 	DekIdFK     int    `json:"fk_dek_id"`
+	ServiceId   int    `json:"fk_service_id"`
 }
 
 type SecretRequest struct {

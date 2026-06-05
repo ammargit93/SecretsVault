@@ -24,13 +24,14 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		claims, err := utils.ValidateJWT(parts[1])
+		serviceName := claims.ServiceName
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
 		}
 		if claims.ServiceRole == "RD" {
 			return c.JSON(fiber.Map{"Error": "Permission denied"})
 		} else {
-			// 1. Generate and encrypt KEK
+
 			rawKEK := make([]byte, 32)
 			if _, err := cryptoRand.Read(rawKEK); err != nil {
 				log.Println("Failed to generate raw KEK:", err)
@@ -98,11 +99,13 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
+			serviceId, err := db.FetchServiceId(conn, serviceName)
 			secretData := models.Secret{
 				SecretKey:   secretRequest.SecretKey,
 				SecretValue: encryptedSecretValue,
 				Nonce:       []byte(rand.Text()),
 				DekIdFK:     dekId, // Uses guaranteed DEK ID
+				ServiceId:   serviceId,
 			}
 
 			if err := db.InsertSecret(conn, secretData); err != nil {
@@ -124,6 +127,7 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		claims, err := utils.ValidateJWT(parts[1])
+		serviceName := claims.ServiceName
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
 		}
@@ -138,11 +142,30 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if !exists {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing secret_key"})
 			}
+			secretsList, err := db.FetchSecretsForService(conn, serviceName)
+			log.Printf("secretKey=%T %#v", secretKey, secretKey)
+			log.Printf("secretsList=%#v", secretsList)
+			if err != nil || len(secretsList) == 0 {
+				log.Println(secretsList)
+				log.Println("Failed to fetch secrets for service: ", serviceName)
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch secrets"})
+			}
+			flag := false
+			for _, s := range secretsList {
+				if s == secretKey {
+					flag = true
+					break
+				}
+			}
+			if !flag {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "secret not found"})
+			}
+
 			sk, exists := Cache[secretKey]
 			if exists {
 				return c.JSON(fiber.Map{"secret_value": json.RawMessage(sk)})
 			}
-			descPayload, err := db.FetchSecretDecryptionPayload(conn, secretKey)
+			descPayload, err := db.FetchSecretDecryptionPayload(conn, secretKey, serviceName)
 			if err != nil {
 				log.Println("Failed to fetch payload:", err)
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "secret not found"})

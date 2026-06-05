@@ -95,23 +95,77 @@ func InsertSecret(db *pgxpool.Pool, secret models.Secret) error {
 	return err
 }
 
-func FetchSecretDecryptionPayload(db *pgxpool.Pool, secretKey string) (models.DecryptionPayload, error) {
+func FetchSecretDecryptionPayload(db *pgxpool.Pool, secretKey string, serviceName string) (models.DecryptionPayload, error) {
 	var payload models.DecryptionPayload
 
 	err := db.QueryRow(
 		context.Background(),
 		`
-        SELECT 
-            s.encrypted_secret_value, 
-            d.encrypted_dek, 
-            k.encrypted_kek
-        FROM secrets s
-        JOIN dek d ON s.fk_dek_id = d.dek_id
-        JOIN kek k ON d.fk_kek_id = k.kek_id
-        WHERE s.secret_key = $1
-        `,
+		SELECT
+			s.encrypted_secret_value,
+			d.encrypted_dek,
+			k.encrypted_kek
+		FROM secrets s
+		JOIN services sv
+			ON s.fk_service_id = sv.service_id
+		JOIN dek d
+			ON s.fk_dek_id = d.dek_id
+		JOIN kek k
+			ON d.fk_kek_id = k.kek_id
+		WHERE s.secret_key = $1
+		AND sv.service_name = $2
+		`,
 		secretKey,
-	).Scan(&payload.EncryptedSecretValue, &payload.EncryptedDEK, &payload.EncryptedKEK)
-
+		serviceName,
+	).Scan(
+		&payload.EncryptedSecretValue,
+		&payload.EncryptedDEK,
+		&payload.EncryptedKEK,
+	)
 	return payload, err
+}
+
+func FetchServiceId(db *pgxpool.Pool, serviceName string) (int, error) {
+	var id int
+
+	err := db.QueryRow(
+		context.Background(),
+		`
+        SELECT service_id
+        FROM services 
+        WHERE service_name = $1
+        `,
+		serviceName,
+	).Scan(&id)
+	return id, err
+}
+func FetchSecretsForService(db *pgxpool.Pool, serviceName string) ([]string, error) {
+	rows, err := db.Query(
+		context.Background(),
+		`
+		SELECT secret_key
+		FROM secrets
+		WHERE fk_service_id = (
+			SELECT service_id
+			FROM services
+			WHERE service_name = $1
+		)
+		`,
+		serviceName,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var secretsList []string
+	for rows.Next() {
+		var secretName string
+		if err := rows.Scan(&secretName); err != nil {
+			return nil, err
+		}
+		log.Println(secretName, serviceName)
+		secretsList = append(secretsList, secretName)
+	}
+	return secretsList, rows.Err()
 }

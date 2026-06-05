@@ -15,6 +15,7 @@ SecretsVault is a highly secure, high-performance secrets management service wri
   - `RD` (Read-only): Permitted on `/secret/read`, blocked on `/secret/write`.
   - `WR` (Write-only): Permitted on `/secret/write`, blocked on `/secret/read`.
   - `RDWR` (Read-Write): Permitted on all endpoints.
+- **Multi-tenant Support**: Supports service based secret management.
 - **In-Memory Caching**: Cache-aside implementation for secret reads to maximize performance and minimize database/KMS requests.
 - **Performance Benchmarking**: Integrated Python benchmarker to measure latency and throughput.
 
@@ -68,8 +69,9 @@ Create a PostgreSQL database named `secretsvault` and execute the following SQL 
 
 ```sql
 CREATE TABLE services (
-    service_name VARCHAR(255) PRIMARY KEY,
-    service_api_key VARCHAR(255) NOT NULL,
+    service_id BIGSERIAL PRIMARY_KEY
+    service_name VARCHAR(255) UNIQUE,
+    service_api_key VARCHAR(255) UNIQUE NOT NULL,
     service_role VARCHAR(10) NOT NULL
 );
 
@@ -87,10 +89,12 @@ CREATE TABLE dek (
 );
 
 CREATE TABLE secrets (
-    secret_key VARCHAR(255) PRIMARY KEY,
+    secret_id BIGSERIAL PRIMARY KEY,
+    secret_key VARCHAR(255) UNIQUE NOT NULL,
     fk_dek_id INT REFERENCES dek(dek_id) ON DELETE CASCADE,
     encrypted_secret_value BYTEA NOT NULL,
     nonce BYTEA NOT NULL
+    fk_service_id INT REFERENCES services(service_id) ON DELETE CASCADE
 );
 ```
 
