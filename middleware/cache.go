@@ -1,3 +1,8 @@
 package middleware
 
-var Cache map[string][]byte = make(map[string][]byte)
+type CacheStruct struct {
+	serviceName string
+	secretValue []byte
+}
+
+var Cache map[string][]CacheStruct = make(map[string][]CacheStruct)

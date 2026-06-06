@@ -49,7 +49,6 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				Nonce:            []byte(rand.Text()),
 			}
 
-			// Capture the ID directly from the insert!
 			kekId, err := db.InsertKEK(conn, kek)
 			if err != nil {
 				log.Println("Failed to insert KEK into DB:", err)
@@ -161,9 +160,13 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "secret not found"})
 			}
 
-			sk, exists := Cache[secretKey]
+			skc, exists := Cache[secretKey]
 			if exists {
-				return c.JSON(fiber.Map{"secret_value": json.RawMessage(sk)})
+				for _, v := range skc {
+					if v.serviceName == serviceName {
+						return c.JSON(fiber.Map{"secret_value": json.RawMessage(v.secretValue)})
+					}
+				}
 			}
 			descPayload, err := db.FetchSecretDecryptionPayload(conn, secretKey, serviceName)
 			if err != nil {
@@ -185,7 +188,10 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if err != nil {
 				log.Fatalln("Failed to decrypt Secret Value:", err)
 			}
-			Cache[secretKey] = decryptedSecretValue
+			Cache[secretKey] = append(Cache[secretKey], CacheStruct{
+				serviceName: serviceName,
+				secretValue: decryptedSecretValue,
+			})
 
 			return c.JSON(fiber.Map{"secret_value": json.RawMessage(decryptedSecretValue)})
 		}
