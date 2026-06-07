@@ -87,10 +87,10 @@ func FetchDEK(db *pgxpool.Pool, dek models.DataEncryptionKey) (int, error) {
 func InsertSecret(db *pgxpool.Pool, secret models.Secret) error {
 	_, err := db.Exec(context.Background(),
 		`
-		INSERT INTO secrets(fk_dek_id, secret_key, encrypted_secret_value, nonce)
-		VALUES($1, $2, $3, $4)
+		INSERT INTO secrets(fk_dek_id, secret_key, encrypted_secret_value, nonce, fk_service_id)
+		VALUES($1, $2, $3, $4, $5)
 		`,
-		secret.DekIdFK, secret.SecretKey, secret.SecretValue, secret.Nonce,
+		secret.DekIdFK, secret.SecretKey, secret.SecretValue, secret.Nonce, secret.ServiceId,
 	)
 	return err
 }

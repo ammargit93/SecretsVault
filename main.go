@@ -18,6 +18,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Error loading .env file")
 	}
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.SendStatus(fiber.StatusOK)
+	})
 
 	app.Post("/register", middleware.Register(conn))
 

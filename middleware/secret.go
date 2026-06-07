@@ -38,7 +38,7 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
-			encryptedKEK, err := state.EncryptKMS(rawKEK)
+			encryptedKEK, err := utils.EncryptKMS(rawKEK)
 			if err != nil {
 				log.Println("KEK encryption failed:", err)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
@@ -62,7 +62,7 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
 			}
 
-			encryptedDEK, err := state.EncryptAES(rawDEK, rawKEK)
+			encryptedDEK, err := utils.EncryptAES(rawDEK, rawKEK)
 			if err != nil {
 				log.Println("DEK encryption failed:", err)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
@@ -92,7 +92,7 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid secret value format"})
 			}
 
-			encryptedSecretValue, err := state.EncryptAES(valueBytes, rawDEK)
+			encryptedSecretValue, err := utils.EncryptAES(valueBytes, rawDEK)
 			if err != nil {
 				log.Println("Secret value encryption failed:", err)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal error"})
@@ -160,11 +160,11 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "secret not found"})
 			}
 
-			skc, exists := Cache[secretKey]
+			skc, exists := state.Cache[secretKey]
 			if exists {
 				for _, v := range skc {
-					if v.serviceName == serviceName {
-						return c.JSON(fiber.Map{"secret_value": json.RawMessage(v.secretValue)})
+					if v.ServiceName == serviceName {
+						return c.JSON(fiber.Map{"secret_value": json.RawMessage(v.SecretValue)})
 					}
 				}
 			}
@@ -174,23 +174,23 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "secret not found"})
 			}
 
-			decryptedKEK, err := state.DecryptKMS(descPayload.EncryptedKEK)
+			decryptedKEK, err := utils.DecryptKMS(descPayload.EncryptedKEK)
 			if err != nil {
 				log.Fatalln("Failed to decrypt KEK:", err)
 			}
 
-			decryptedDEK, err := state.DecryptAES(descPayload.EncryptedDEK, decryptedKEK)
+			decryptedDEK, err := utils.DecryptAES(descPayload.EncryptedDEK, decryptedKEK)
 			if err != nil {
 				log.Fatalln("Failed to decrypt DEK:", err)
 			}
 
-			decryptedSecretValue, err := state.DecryptAES(descPayload.EncryptedSecretValue, decryptedDEK)
+			decryptedSecretValue, err := utils.DecryptAES(descPayload.EncryptedSecretValue, decryptedDEK)
 			if err != nil {
 				log.Fatalln("Failed to decrypt Secret Value:", err)
 			}
-			Cache[secretKey] = append(Cache[secretKey], CacheStruct{
-				serviceName: serviceName,
-				secretValue: decryptedSecretValue,
+			state.Cache[secretKey] = append(state.Cache[secretKey], state.CacheStruct{
+				ServiceName: serviceName,
+				SecretValue: decryptedSecretValue,
 			})
 
 			return c.JSON(fiber.Map{"secret_value": json.RawMessage(decryptedSecretValue)})
