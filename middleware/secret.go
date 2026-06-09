@@ -4,12 +4,14 @@ import (
 	"crypto/rand"
 	cryptoRand "crypto/rand"
 	"encoding/json"
+	"fmt"
 	"log"
 	"secretsvault/db"
 	"secretsvault/models"
 	"secretsvault/state"
 	"secretsvault/utils"
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -111,7 +113,14 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 				log.Println("Failed to insert secret:", secretData.SecretKey, err)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to save secret"})
 			}
-
+			msg := fmt.Sprintf(
+				"%s %s %s %s WR",
+				time.Now().Format("2006-01-02 15:04:05"),
+				secretRequest.SecretKey,
+				serviceName,
+				claims.ServiceRole,
+			)
+			state.Channel <- msg
 			return c.JSON(fiber.Map{"message": secretRequest.SecretKey})
 		}
 	}
@@ -159,11 +168,18 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if !flag {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "secret not found"})
 			}
-
-			skc, exists := state.Cache[secretKey]
+			msg := fmt.Sprintf(
+				"%s %s %s %s RD",
+				time.Now().Format("2006-01-02 15:04:05"),
+				secretKey,
+				serviceName,
+				claims.ServiceRole,
+			)
+			skc, exists := Cache[secretKey]
 			if exists {
 				for _, v := range skc {
 					if v.ServiceName == serviceName {
+						state.Channel <- msg
 						return c.JSON(fiber.Map{"secret_value": json.RawMessage(v.SecretValue)})
 					}
 				}
@@ -188,11 +204,12 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if err != nil {
 				log.Fatalln("Failed to decrypt Secret Value:", err)
 			}
-			state.Cache[secretKey] = append(state.Cache[secretKey], state.CacheStruct{
+			Cache[secretKey] = append(Cache[secretKey], CacheStruct{
 				ServiceName: serviceName,
 				SecretValue: decryptedSecretValue,
 			})
 
+			state.Channel <- msg
 			return c.JSON(fiber.Map{"secret_value": json.RawMessage(decryptedSecretValue)})
 		}
 	}

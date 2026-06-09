@@ -4,6 +4,7 @@ import (
 	"log"
 	"secretsvault/db"
 	"secretsvault/middleware"
+	"secretsvault/state"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/joho/godotenv"
@@ -30,5 +31,6 @@ func main() {
 
 	app.Post("/secret/read", middleware.ReadSecret(conn))
 
+	go state.SaveLog()
 	log.Fatal(app.Listen(":8080"))
 }

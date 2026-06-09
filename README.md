@@ -15,8 +15,9 @@ SecretsVault is a highly secure, high-performance secrets management service wri
   - `RD` (Read-only): Permitted on `/secret/read`, blocked on `/secret/write`.
   - `WR` (Write-only): Permitted on `/secret/write`, blocked on `/secret/read`.
   - `RDWR` (Read-Write): Permitted on all endpoints.
-- **Multi-tenant Support**: Supports service based secret management.
+- **Multi-tenant Support**: Supports service-based secret management.
 - **In-Memory Caching**: Cache-aside implementation for secret reads to maximize performance and minimize database/KMS requests.
+- **Asynchronous Audit Logging**: Logs all read and write actions asynchronously to an `audit.log` file using Go channels, ensuring security compliance without blocking request execution.
 - **Performance Benchmarking**: Integrated Python benchmarker to measure latency and throughput.
 
 ---
@@ -69,7 +70,7 @@ Create a PostgreSQL database named `secretsvault` and execute the following SQL 
 
 ```sql
 CREATE TABLE services (
-    service_id BIGSERIAL PRIMARY_KEY
+    service_id BIGSERIAL PRIMARY KEY,
     service_name VARCHAR(255) UNIQUE,
     service_api_key VARCHAR(255) UNIQUE NOT NULL,
     service_role VARCHAR(10) NOT NULL
@@ -93,7 +94,7 @@ CREATE TABLE secrets (
     secret_key VARCHAR(255) UNIQUE NOT NULL,
     fk_dek_id INT REFERENCES dek(dek_id) ON DELETE CASCADE,
     encrypted_secret_value BYTEA NOT NULL,
-    nonce BYTEA NOT NULL
+    nonce BYTEA NOT NULL,
     fk_service_id INT REFERENCES services(service_id) ON DELETE CASCADE
 );
 ```
@@ -101,9 +102,7 @@ CREATE TABLE secrets (
 ### 3. Environment Configuration
 Create a `.env` file in the root directory:
 ```env
-PORT=8080
 KMS_KEY_ID=arn:aws:kms:YOUR_REGION:YOUR_ACCOUNT_ID:key/YOUR_KEY_ID
-AWS_REGION=ap-south-1
 ```
 *Note: Ensure your environment has standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) exported or configured via AWS credentials profile.*
 
@@ -156,7 +155,7 @@ Authenticates the service and retrieves a JWT access token.
 ```
 
 ### 3. Write Secret
-Encrypts and stores a new secret. Requires `WR` or `RDWR` service role.
+Encrypts and stores a new secret. Requires `WR` or `RDWR` service role. The `secret_value` can be any JSON-serializable value (e.g., string, number, array, boolean, or nested object).
 * **Endpoint**: `POST /secret/write`
 * **Headers**:
   * `Authorization`: `Bearer <JWT_TOKEN>`
@@ -175,7 +174,7 @@ Encrypts and stores a new secret. Requires `WR` or `RDWR` service role.
 ```
 
 ### 4. Read Secret
-Retrieves and decrypts a stored secret. Requires `RD` or `RDWR` service role.
+Retrieves and decrypts a stored secret. Requires `RD` or `RDWR` service role. Returns the decrypted secret value in its original JSON format.
 * **Endpoint**: `POST /secret/read`
 * **Headers**:
   * `Authorization`: `Bearer <JWT_TOKEN>`
@@ -190,6 +189,37 @@ Retrieves and decrypts a stored secret. Requires `RD` or `RDWR` service role.
 {
   "secret_value": "super-secret-password-123"
 }
+```
+
+### 5. Health Check
+Checks the server health status.
+* **Endpoint**: `GET /health`
+* **Response (200 OK)**:
+```text
+OK
+```
+
+---
+
+## Audit Logging
+
+The service includes an asynchronous audit logging system using Go channels. When a secret is read or written, an access event is logged in a separate goroutine to prevent request-handling latency.
+
+Logs are appended to `audit.log` in the following space-delimited format:
+```
+<timestamp> <secret_key> <service_name> <service_role> <operation>
+```
+
+### Log Fields:
+- **Timestamp**: The date and time of the event (e.g., `2026-06-09 19:04:16`).
+- **Secret Key**: The key of the secret being accessed or written (e.g., `Email`).
+- **Service Name**: The name of the service performing the operation (e.g., `auth`).
+- **Service Role**: The role of the service at the time of the operation (e.g., `RDWR`).
+- **Operation**: The type of operation (`RD` for Read, `WR` for Write).
+
+Example entry:
+```text
+2026-06-09 19:04:16 Email auth RDWR WR
 ```
 
 ---
