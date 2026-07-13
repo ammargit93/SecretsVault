@@ -169,3 +169,48 @@ func FetchSecretsForService(db *pgxpool.Pool, serviceName string) ([]string, err
 	}
 	return secretsList, rows.Err()
 }
+
+func FetchKekIdForSecret(db *pgxpool.Pool, secretKey string, serviceName string) (int, error) {
+	var kekId int
+	err := db.QueryRow(
+		context.Background(),
+		`
+		SELECT d.fk_kek_id
+		FROM secrets s
+		JOIN services sv ON s.fk_service_id = sv.service_id
+		JOIN dek d ON s.fk_dek_id = d.dek_id
+		WHERE s.secret_key = $1 AND sv.service_name = $2
+		`,
+		secretKey,
+		serviceName,
+	).Scan(&kekId)
+	return kekId, err
+}
+
+func DeleteKEK(db *pgxpool.Pool, kekId int) error {
+	_, err := db.Exec(
+		context.Background(),
+		`DELETE FROM kek WHERE kek_id = $1`,
+		kekId,
+	)
+	return err
+}
+
+func UpdateSecret(db *pgxpool.Pool, secretKey string, serviceName string, encryptedValue []byte, nonce []byte) error {
+	_, err := db.Exec(
+		context.Background(),
+		`
+		UPDATE secrets
+		SET encrypted_secret_value = $1, nonce = $2
+		WHERE secret_key = $3
+		AND fk_service_id = (
+			SELECT service_id FROM services WHERE service_name = $4
+		)
+		`,
+		encryptedValue,
+		nonce,
+		secretKey,
+		serviceName,
+	)
+	return err
+}

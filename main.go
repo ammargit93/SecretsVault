@@ -31,6 +31,10 @@ func main() {
 
 	app.Post("/secret/read", middleware.ReadSecret(conn))
 
+	app.Post("/secret/update", middleware.UpdateSecret(conn))
+
+	app.Post("/secret/delete", middleware.DeleteSecret(conn))
+
 	go state.SaveLog()
 	log.Fatal(app.Listen(":8080"))
 }

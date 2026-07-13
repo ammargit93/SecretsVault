@@ -103,8 +103,9 @@ CREATE TABLE secrets (
 Create a `.env` file in the root directory:
 ```env
 KMS_KEY_ID=arn:aws:kms:YOUR_REGION:YOUR_ACCOUNT_ID:key/YOUR_KEY_ID
+USE_KMS=false
 ```
-*Note: Ensure your environment has standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) exported or configured via AWS credentials profile.*
+*Note: Setting `USE_KMS=false` (or leaving it unset) defaults to local envelope encryption with a hardcoded dummy master key. To use AWS KMS, set `USE_KMS=true` and ensure your environment has standard AWS credentials (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`) configured.*
 
 ### 4. Running the Server
 Install dependencies and run the server:
@@ -191,7 +192,46 @@ Retrieves and decrypts a stored secret. Requires `RD` or `RDWR` service role. Re
 }
 ```
 
-### 5. Health Check
+### 5. Update Secret
+Updates a stored secret in-place using the existing encryption keys. Requires `WR` or `RDWR` service role.
+* **Endpoint**: `POST /secret/update`
+* **Headers**:
+  * `Authorization`: `Bearer <JWT_TOKEN>`
+* **Request Body**:
+```json
+{
+  "secret_key": "db_password",
+  "secret_value": "new-super-secret-password-456"
+}
+```
+* **Response (200 OK)**:
+```json
+{
+  "message": "updated",
+  "secret_key": "db_password"
+}
+```
+
+### 6. Delete Secret
+Deletes a stored secret and its associated KEK/DEK keys. Requires `WR` or `RDWR` service role.
+* **Endpoint**: `POST /secret/delete`
+* **Headers**:
+  * `Authorization`: `Bearer <JWT_TOKEN>`
+* **Request Body**:
+```json
+{
+  "secret_key": "db_password"
+}
+```
+* **Response (200 OK)**:
+```json
+{
+  "message": "deleted",
+  "secret_key": "db_password"
+}
+```
+
+### 7. Health Check
 Checks the server health status.
 * **Endpoint**: `GET /health`
 * **Response (200 OK)**:
@@ -215,7 +255,7 @@ Logs are appended to `audit.log` in the following space-delimited format:
 - **Secret Key**: The key of the secret being accessed or written (e.g., `Email`).
 - **Service Name**: The name of the service performing the operation (e.g., `auth`).
 - **Service Role**: The role of the service at the time of the operation (e.g., `RDWR`).
-- **Operation**: The type of operation (`RD` for Read, `WR` for Write).
+- **Operation**: The type of operation (`RD` for Read, `WR` for Write, `UP` for Update, `DL` for Delete).
 
 Example entry:
 ```text
