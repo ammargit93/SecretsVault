@@ -39,6 +39,8 @@ func GenerateAPIKey() string {
 
 var jwtSecret = []byte("super_secret_key_change_me")
 
+const dummyMasterKey = "dummy_master_key_for_envelope_en"
+
 func GenerateJWT(serviceName, serviceRole string) (string, error) {
 	claims := models.JWTClaims{
 		ServiceName: serviceName,
@@ -84,6 +86,10 @@ func ValidateJWT(tokenString string) (*models.JWTClaims, error) {
 }
 
 func EncryptKMS(plaintext []byte) ([]byte, error) {
+	if os.Getenv("USE_KMS") != "true" {
+		return EncryptAES(plaintext, []byte(dummyMasterKey))
+	}
+
 	ctx := context.Background()
 
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-south-1"))
@@ -105,6 +111,10 @@ func EncryptKMS(plaintext []byte) ([]byte, error) {
 }
 
 func DecryptKMS(ciphertext []byte) ([]byte, error) {
+	if os.Getenv("USE_KMS") != "true" {
+		return DecryptAES(ciphertext, []byte(dummyMasterKey))
+	}
+
 	ctx := context.Background()
 
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("ap-south-1"))

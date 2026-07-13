@@ -26,10 +26,10 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		claims, err := utils.ValidateJWT(parts[1])
-		serviceName := claims.ServiceName
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
 		}
+		serviceName := claims.ServiceName
 		if claims.ServiceRole == "RD" {
 			return c.JSON(fiber.Map{"Error": "Permission denied"})
 		} else {
@@ -135,10 +135,10 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		claims, err := utils.ValidateJWT(parts[1])
-		serviceName := claims.ServiceName
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid token"})
 		}
+		serviceName := claims.ServiceName
 		if claims.ServiceRole == "WR" {
 			return c.JSON(fiber.Map{"Error": "Permission denied"})
 		} else {
@@ -151,10 +151,7 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing secret_key"})
 			}
 			secretsList, err := db.FetchSecretsForService(conn, serviceName)
-			log.Printf("secretKey=%T %#v", secretKey, secretKey)
-			log.Printf("secretsList=%#v", secretsList)
 			if err != nil || len(secretsList) == 0 {
-				log.Println(secretsList)
 				log.Println("Failed to fetch secrets for service: ", serviceName)
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to fetch secrets"})
 			}
