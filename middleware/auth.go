@@ -15,14 +15,14 @@ func Register(conn *pgxpool.Pool) fiber.Handler {
 
 		c.BodyParser(&serviceRequest)
 		serviceAPIKey := utils.GenerateAPIKey()
-		hashedAPIKey, err := utils.HashPassword(serviceAPIKey)
+		hashedAPIKey := utils.HashAPIKey(serviceAPIKey)
 
 		var service models.Service
 		service.ServiceAPIKey = hashedAPIKey
 		service.ServiceName = serviceRequest.ServiceName
 		service.ServiceRole = serviceRequest.ServiceRole
 
-		err = db.InsertService(conn, service)
+		err := db.InsertService(conn, service)
 		if err != nil {
 			return c.Status(500).JSON(fiber.Map{
 				"error": "DB write fail",
@@ -46,7 +46,7 @@ func Login(conn *pgxpool.Pool) fiber.Handler {
 				"error": err.Error(),
 			})
 		}
-		if utils.CheckPasswordHash(serviceAPIKey, fetchedAPIKey) {
+		if utils.CheckAPIKey(serviceAPIKey, fetchedAPIKey) {
 			jwtToken, err := utils.GenerateJWT(
 				serviceRequest.ServiceName,
 				serviceRequest.ServiceRole,
