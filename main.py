@@ -224,6 +224,23 @@ def main():
     session.mount("http://", adapter)
     session.mount("https://", adapter)
 
+    # Dynamically register service and log in to get a valid token
+    service_name = f"bench_service_{int(time.time())}"
+    reg_payload = {"service_name": service_name, "service_role": "RDWR"}
+    try:
+        r_reg = session.post(f"{BASE_URL}/register", json=reg_payload, timeout=5)
+        r_reg.raise_for_status()
+        api_key = r_reg.json()["API_KEY"]
+        
+        r_login = session.post(f"{BASE_URL}/login", json=reg_payload, headers={"SV-API-KEY": api_key}, timeout=5)
+        r_login.raise_for_status()
+        token = r_login.json()["token"]
+        
+        HEADERS["Authorization"] = f"Bearer {token}"
+    except Exception as e:
+        print(f"❌ Failed to register/login: {e}")
+        return
+
     keys = [f"secret_{i}" for i in range(NUM_SECRETS)]
 
     # ------------------------------------------------------

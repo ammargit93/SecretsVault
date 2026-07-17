@@ -214,3 +214,49 @@ func UpdateSecret(db *pgxpool.Pool, secretKey string, serviceName string, encryp
 	)
 	return err
 }
+
+func FetchActiveDekIdForService(db *pgxpool.Pool, serviceId int) (int, error) {
+	var id int
+	err := db.QueryRow(
+		context.Background(),
+		`
+		SELECT fk_dek_id
+		FROM secrets
+		WHERE fk_service_id = $1
+		LIMIT 1
+		`,
+		serviceId,
+	).Scan(&id)
+	return id, err
+}
+
+func FetchDEKAndKEKByDekId(db *pgxpool.Pool, dekId int) (models.DecryptionPayload, error) {
+	var payload models.DecryptionPayload
+	err := db.QueryRow(
+		context.Background(),
+		`
+		SELECT d.encrypted_dek, k.encrypted_kek
+		FROM dek d
+		JOIN kek k ON d.fk_kek_id = k.kek_id
+		WHERE d.dek_id = $1
+		`,
+		dekId,
+	).Scan(&payload.EncryptedDEK, &payload.EncryptedKEK)
+	return payload, err
+}
+
+func DeleteSecret(db *pgxpool.Pool, secretKey string, serviceName string) error {
+	_, err := db.Exec(
+		context.Background(),
+		`
+		DELETE FROM secrets
+		WHERE secret_key = $1
+		AND fk_service_id = (
+			SELECT service_id FROM services WHERE service_name = $2
+		)
+		`,
+		secretKey,
+		serviceName,
+	)
+	return err
+}
