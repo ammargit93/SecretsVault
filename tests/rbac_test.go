@@ -16,8 +16,10 @@ import (
 func TestRoleBasedAccessControl(t *testing.T) {
 	conn := db.InitDB()
 	defer conn.Close()
+	rdb := db.InitRedis()
+	defer rdb.Close()
 
-	app := setupApp(conn)
+	app := setupApp(conn, rdb)
 
 	// 1. RD (Read Only) role assertions
 	rdSvcName := "rd_svc_" + strconv.FormatInt(time.Now().UnixNano(), 10)

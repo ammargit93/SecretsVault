@@ -16,8 +16,10 @@ import (
 func TestSuccessFlow(t *testing.T) {
 	conn := db.InitDB()
 	defer conn.Close()
+	rdb := db.InitRedis()
+	defer rdb.Close()
 
-	app := setupApp(conn)
+	app := setupApp(conn, rdb)
 
 	serviceName := "success_svc_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	token := registerAndLogin(t, app, serviceName, "RDWR")

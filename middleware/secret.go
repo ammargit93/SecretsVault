@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/rand"
 	cryptoRand "crypto/rand"
 	"encoding/json"
@@ -13,11 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
+func WriteSecret(conn *pgxpool.Pool, rdb *redis.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		bearer := c.Get("Authorization")
 		parts := strings.Split(bearer, " ")
@@ -150,7 +152,7 @@ func WriteSecret(conn *pgxpool.Pool) fiber.Handler {
 	}
 }
 
-func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
+func ReadSecret(conn *pgxpool.Pool, rdb *redis.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		bearer := c.Get("Authorization")
 		parts := strings.Split(bearer, " ")
@@ -174,6 +176,21 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if !exists {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "missing secret_key"})
 			}
+			cacheKey := fmt.Sprintf("secret:%s:%s", serviceName, secretKey)
+			msg := fmt.Sprintf(
+				"%s %s %s %s RD",
+				time.Now().Format("2006-01-02 15:04:05"),
+				secretKey,
+				serviceName,
+				claims.ServiceRole,
+			)
+
+			val, err := rdb.Get(context.Background(), cacheKey).Result()
+			if err == nil {
+				state.Channel <- msg
+				return c.JSON(fiber.Map{"secret_value": json.RawMessage(val)})
+			}
+
 			secretsList, err := db.FetchSecretsForService(conn, serviceName)
 			if err != nil {
 				log.Println("Failed to fetch secrets for service:", serviceName, "err:", err)
@@ -189,22 +206,7 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if !flag {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "secret not found"})
 			}
-			msg := fmt.Sprintf(
-				"%s %s %s %s RD",
-				time.Now().Format("2006-01-02 15:04:05"),
-				secretKey,
-				serviceName,
-				claims.ServiceRole,
-			)
-			skc, exists := Cache[secretKey]
-			if exists {
-				for _, v := range skc {
-					if v.ServiceName == serviceName {
-						state.Channel <- msg
-						return c.JSON(fiber.Map{"secret_value": json.RawMessage(v.SecretValue)})
-					}
-				}
-			}
+
 			descPayload, err := db.FetchSecretDecryptionPayload(conn, secretKey, serviceName)
 			if err != nil {
 				log.Println("Failed to fetch payload:", err)
@@ -225,10 +227,12 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 			if err != nil {
 				return c.Status(500).JSON(fiber.Map{"error": "failed to decrypt secret value"})
 			}
-			Cache[secretKey] = append(Cache[secretKey], CacheStruct{
-				ServiceName: serviceName,
-				SecretValue: decryptedSecretValue,
-			})
+
+			// Store in Redis (namespaced, with 24 hours TTL)
+			err = rdb.Set(context.Background(), cacheKey, decryptedSecretValue, 24*time.Hour).Err()
+			if err != nil {
+				log.Println("Failed to cache secret in Redis:", err)
+			}
 
 			state.Channel <- msg
 			return c.JSON(fiber.Map{"secret_value": json.RawMessage(decryptedSecretValue)})
@@ -236,7 +240,7 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 	}
 }
 
-func UpdateSecret(conn *pgxpool.Pool) fiber.Handler {
+func UpdateSecret(conn *pgxpool.Pool, rdb *redis.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		bearer := c.Get("Authorization")
 		parts := strings.Split(bearer, " ")
@@ -310,7 +314,8 @@ func UpdateSecret(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		// Invalidate cache
-		delete(Cache, secretRequest.SecretKey)
+		cacheKey := fmt.Sprintf("secret:%s:%s", serviceName, secretRequest.SecretKey)
+		rdb.Del(context.Background(), cacheKey)
 
 		msg := fmt.Sprintf(
 			"%s %s %s %s UP",
@@ -325,7 +330,7 @@ func UpdateSecret(conn *pgxpool.Pool) fiber.Handler {
 	}
 }
 
-func DeleteSecret(conn *pgxpool.Pool) fiber.Handler {
+func DeleteSecret(conn *pgxpool.Pool, rdb *redis.Client) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		bearer := c.Get("Authorization")
 		parts := strings.Split(bearer, " ")
@@ -374,7 +379,8 @@ func DeleteSecret(conn *pgxpool.Pool) fiber.Handler {
 		}
 
 		// Invalidate cache
-		delete(Cache, secretKey)
+		cacheKey := fmt.Sprintf("secret:%s:%s", serviceName, secretKey)
+		rdb.Del(context.Background(), cacheKey)
 
 		msg := fmt.Sprintf(
 			"%s %s %s %s DL",

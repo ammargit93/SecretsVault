@@ -4,7 +4,9 @@ import (
 	"context"
 	"log"
 	"secretsvault/models"
+	"time"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -13,10 +15,23 @@ func InitDB() *pgxpool.Pool {
 		context.Background(),
 		"postgres://ammar:1234@localhost:5432/secretsvault",
 	)
+	conn.Config().MaxConns = 50
 	if err != nil {
 		log.Fatal(err)
 	}
 	return conn
+}
+
+func InitRedis() *redis.Client {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:        "localhost:6379",
+		Password:    "", // no password set
+		DB:          0,  // use default DB
+		PoolSize:    50,
+		PoolTimeout: 10 * time.Second,
+	})
+	return rdb
+
 }
 
 func InsertService(db *pgxpool.Pool, service models.Service) error {

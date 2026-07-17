@@ -13,8 +13,10 @@ import (
 func TestAuthenticationErrors(t *testing.T) {
 	conn := db.InitDB()
 	defer conn.Close()
+	rdb := db.InitRedis()
+	defer rdb.Close()
 
-	app := setupApp(conn)
+	app := setupApp(conn, rdb)
 
 	// 1. Missing SV-API-KEY in login
 	loginBody := map[string]string{

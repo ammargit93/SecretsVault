@@ -15,8 +15,10 @@ import (
 func TestTenantIsolation(t *testing.T) {
 	conn := db.InitDB()
 	defer conn.Close()
+	rdb := db.InitRedis()
+	defer rdb.Close()
 
-	app := setupApp(conn)
+	app := setupApp(conn, rdb)
 
 	// Register two services
 	svcA := "svcA_" + strconv.FormatInt(time.Now().UnixNano(), 10)

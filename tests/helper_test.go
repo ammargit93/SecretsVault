@@ -9,6 +9,7 @@ import (
 	"secretsvault/middleware"
 	"testing"
 
+	"github.com/go-redis/redis/v8"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -54,15 +55,15 @@ func registerAndLogin(t *testing.T, app *fiber.App, serviceName, role string) st
 }
 
 // setupApp helper initializes Fiber and connects to the DB
-func setupApp(conn *pgxpool.Pool) *fiber.App {
+func setupApp(conn *pgxpool.Pool, rdb *redis.Client) *fiber.App {
 	app := fiber.New()
 
 	app.Post("/register", middleware.Register(conn))
 	app.Post("/login", middleware.Login(conn))
-	app.Post("/secret/write", middleware.WriteSecret(conn))
-	app.Post("/secret/read", middleware.ReadSecret(conn))
-	app.Post("/secret/update", middleware.UpdateSecret(conn))
-	app.Post("/secret/delete", middleware.DeleteSecret(conn))
+	app.Post("/secret/write", middleware.WriteSecret(conn, rdb))
+	app.Post("/secret/read", middleware.ReadSecret(conn, rdb))
+	app.Post("/secret/update", middleware.UpdateSecret(conn, rdb))
+	app.Post("/secret/delete", middleware.DeleteSecret(conn, rdb))
 
 	return app
 }
