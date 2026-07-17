@@ -189,17 +189,17 @@ func ReadSecret(conn *pgxpool.Pool) fiber.Handler {
 
 			decryptedKEK, err := utils.DecryptKMS(descPayload.EncryptedKEK)
 			if err != nil {
-				log.Fatalln("Failed to decrypt KEK:", err)
+				return c.Status(500).JSON(fiber.Map{"error": "failed to decrypt KEK"})
 			}
 
 			decryptedDEK, err := utils.DecryptAES(descPayload.EncryptedDEK, decryptedKEK)
 			if err != nil {
-				log.Fatalln("Failed to decrypt DEK:", err)
+				return c.Status(500).JSON(fiber.Map{"error": "failed to decrypt KEK"})
 			}
 
 			decryptedSecretValue, err := utils.DecryptAES(descPayload.EncryptedSecretValue, decryptedDEK)
 			if err != nil {
-				log.Fatalln("Failed to decrypt Secret Value:", err)
+				return c.Status(500).JSON(fiber.Map{"error": "failed to decrypt secret value"})
 			}
 			Cache[secretKey] = append(Cache[secretKey], CacheStruct{
 				ServiceName: serviceName,

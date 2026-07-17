@@ -56,7 +56,7 @@ func FetchKEK(db *pgxpool.Pool, kek models.KeyEncryptionKey) (int, error) {
 	err := db.QueryRow(
 		context.Background(),
 		`
-		select kek_id from kek where encrypted_kek='$1' and nonce='$2'
+		select kek_id from kek where encrypted_kek=$1 and nonce=$2
 		`,
 		kek.KeyEncryptionKey, kek.Nonce,
 	).Scan(&kekId)
@@ -77,7 +77,7 @@ func FetchDEK(db *pgxpool.Pool, dek models.DataEncryptionKey) (int, error) {
 	err := db.QueryRow(
 		context.Background(),
 		`
-		select dek_id from dek where encrypted_dek='$1' and nonce='$2'
+		select dek_id from dek where encrypted_dek=$1 and nonce=$2
 		`,
 		dek.DataEncryptionKey, dek.Nonce,
 	).Scan(&dekId)
