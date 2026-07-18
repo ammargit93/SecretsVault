@@ -11,7 +11,9 @@ import (
 )
 
 func main() {
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		Concurrency: 100,
+	})
 
 	conn := db.InitDB()
 	defer conn.Close()

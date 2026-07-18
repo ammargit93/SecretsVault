@@ -15,7 +15,7 @@ func InitDB() *pgxpool.Pool {
 		context.Background(),
 		"postgres://ammar:1234@localhost:5432/secretsvault",
 	)
-	conn.Config().MaxConns = 50
+	conn.Config().MaxConns = 100
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func InitRedis() *redis.Client {
 		Addr:        "localhost:6379",
 		Password:    "", // no password set
 		DB:          0,  // use default DB
-		PoolSize:    50,
+		PoolSize:    100,
 		PoolTimeout: 10 * time.Second,
 	})
 	return rdb
