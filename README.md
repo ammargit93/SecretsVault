@@ -1,6 +1,6 @@
 # SecretsVault
 
-SecretsVault is a highly secure, high-performance secrets management service written in Go using the Fiber web framework. It provides robust protection for sensitive data through **Envelope Encryption** powered by AWS KMS (Key Management Service) and AES-256-GCM.
+SecretsVault is a highly secure, high-performance secrets management service written in Go using the Fiber web framework. It provides robust protection for sensitive data through **Envelope Encryption** powered by AWS KMS (Key Management Service) and AES-256-GCM, along with in-memory Redis caching and PostgreSQL persistent storage.
 
 ---
 
@@ -9,15 +9,16 @@ SecretsVault is a highly secure, high-performance secrets management service wri
 - **Envelope Encryption**: Multi-layered key encryption workflow:
   - Secrets are encrypted with a dynamic **Data Encryption Key (DEK)** using AES-256-GCM.
   - Each DEK is encrypted with a **Key Encryption Key (KEK)** using AES-256-GCM.
-  - Each KEK is encrypted with AWS KMS.
+  - Each KEK is encrypted with AWS KMS (or fallback local encryption).
 - **Service Registration & Auth**: Services register to receive a unique API Key. Registered services authenticate using their API Key to acquire short-lived JWT tokens.
 - **Role-Based Access Control (RBAC)**: Supports roles (`RD`, `WR`, `RDWR`) to restrict endpoints:
   - `RD` (Read-only): Permitted on `/secret/read`, blocked on `/secret/write`.
   - `WR` (Write-only): Permitted on `/secret/write`, blocked on `/secret/read`.
   - `RDWR` (Read-Write): Permitted on all endpoints.
 - **Multi-tenant Support**: Supports service-based secret management.
-- **In-Memory Caching**: Cache-aside implementation for secret reads to maximize performance and minimize database/KMS requests.
+- **In-Memory Redis Caching**: Cache-aside implementation for secret reads to maximize performance and minimize database/KMS requests.
 - **Asynchronous Audit Logging**: Logs all read and write actions asynchronously to an `audit.log` file using Go channels, ensuring security compliance without blocking request execution.
+- **Continuous Integration (CI/CD)**: Automated GitHub Actions pipeline testing code quality (`go vet`) and integration tests with PostgreSQL and Redis service containers.
 - **Performance Benchmarking**: Integrated Python benchmarker to measure latency and throughput.
 
 ---
@@ -47,11 +48,14 @@ SecretsVault is a highly secure, high-performance secrets management service wri
 
 ## Directory Structure
 
+- `.github/workflows/`: GitHub Actions CI/CD workflow configurations.
 - `db/`: Database configuration and query wrappers.
 - `middleware/`: Web server middlewares including auth, caching, and read/write endpoint handlers.
 - `models/`: Go structs defining requests, responses, database schemas, and JWT claims.
 - `state/`: Cryptographic utilities for AES-256-GCM and AWS KMS interaction.
+- `tests/`: End-to-end integration and unit test suite.
 - `utils/`: JWT generation/validation, password hashing, and API Key helper functions.
+- `init.sql`: Database schema initialization script.
 - `main.go`: Application entrypoint.
 - `main.py`: Python client for testing and benchmarking latency/throughput.
 
@@ -61,12 +65,19 @@ SecretsVault is a highly secure, high-performance secrets management service wri
 
 ### 1. Prerequisites
 - **Go** (version 1.20+)
-- **PostgreSQL**
+- **PostgreSQL** (version 14+)
+- **Redis** (version 6+)
 - **Python 3.x** (for testing/benchmarking)
-- **AWS Account** with KMS access configured locally (e.g., via AWS CLI or env variables)
+- **AWS Account** with KMS access configured locally (optional)
 
 ### 2. Database Setup
-Create a PostgreSQL database named `secretsvault` and execute the following SQL schema to create the required tables:
+Create a PostgreSQL database named `secretsvault` and execute `init.sql` to set up tables and privileges:
+
+```bash
+psql -U postgres -d secretsvault -f init.sql
+```
+
+Alternatively, manually execute the following SQL schema:
 
 ```sql
 CREATE TABLE services (
@@ -102,6 +113,8 @@ CREATE TABLE secrets (
 ### 3. Environment Configuration
 Create a `.env` file in the root directory:
 ```env
+POSTGRES_CONN=postgres://<username>:<password>@localhost:5432/secretsvault?sslmode=disable
+REDIS_CONN=localhost:6379
 KMS_KEY_ID=arn:aws:kms:YOUR_REGION:YOUR_ACCOUNT_ID:key/YOUR_KEY_ID
 USE_KMS=false
 ```
@@ -114,6 +127,22 @@ go mod tidy
 go run main.go
 ```
 The server will start listening on port `:8080`.
+
+---
+
+## Testing & CI/CD
+
+### Local Testing
+Run the test suite locally:
+```bash
+go test -v ./tests/...
+```
+
+### Continuous Integration (GitHub Actions)
+The project includes an automated CI workflow at `.github/workflows/ci.yml`:
+- **Triggers**: Executed on every `push` and `pull_request` to `main` or `master`.
+- **Services**: Boots PostgreSQL 16 and Redis service containers automatically.
+- **Verification**: Applies `init.sql`, executes `go vet ./...`, and runs all integration tests.
 
 ---
 
