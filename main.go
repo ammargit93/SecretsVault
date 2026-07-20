@@ -11,6 +11,11 @@ import (
 )
 
 func main() {
+	err := godotenv.Load()
+	if err != nil {
+		log.Println("Error loading .env file:", err)
+	}
+
 	app := fiber.New(fiber.Config{
 		Concurrency: 100,
 	})
@@ -19,11 +24,6 @@ func main() {
 	defer conn.Close()
 	redisConn := db.InitRedis()
 	defer redisConn.Close()
-
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.SendStatus(fiber.StatusOK)
 	})

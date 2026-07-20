@@ -12,7 +12,12 @@ import (
 	"github.com/go-redis/redis/v8"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 )
+
+func init() {
+	_ = godotenv.Load("../.env")
+}
 
 // Helper to register and login a service
 func registerAndLogin(t *testing.T, app *fiber.App, serviceName, role string) string {

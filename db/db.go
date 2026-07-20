@@ -3,7 +3,9 @@ package db
 import (
 	"context"
 	"log"
+	"os"
 	"secretsvault/models"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
@@ -11,20 +13,32 @@ import (
 )
 
 func InitDB() *pgxpool.Pool {
+	connStr := os.Getenv("POSTGRES_CONN")
+	if connStr == "" || connStr == "http://localhost:5432" {
+		connStr = "postgres://ammar:1234@localhost:5432/secretsvault?sslmode=disable"
+	}
 	conn, err := pgxpool.New(
 		context.Background(),
-		"postgres://ammar:1234@localhost:5432/secretsvault",
+		connStr,
 	)
-	conn.Config().MaxConns = 100
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to connect to Postgres:", err)
 	}
+	conn.Config().MaxConns = 100
 	return conn
 }
 
 func InitRedis() *redis.Client {
+	redisAddr := os.Getenv("REDIS_CONN")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+	redisAddr = strings.TrimPrefix(redisAddr, "http://")
+	redisAddr = strings.TrimPrefix(redisAddr, "https://")
+	redisAddr = strings.TrimPrefix(redisAddr, "redis://")
+
 	rdb := redis.NewClient(&redis.Options{
-		Addr:        "localhost:6379",
+		Addr:        redisAddr,
 		Password:    "", // no password set
 		DB:          0,  // use default DB
 		PoolSize:    100,
